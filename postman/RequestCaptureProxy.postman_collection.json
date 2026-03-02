@@ -1,0 +1,624 @@
+{
+  "info": {
+    "_postman_id": "a0a16598-fd8d-4db5-a3eb-8a8e1f3e6d6b",
+    "name": "RequestCaptureProxy - Comprehensive Feature Suite",
+    "description": "Comprehensive Postman suite for RequestCaptureProxy.\\n\\nRecommended proxy-mode upstreams for repeatable behavior:\\n- REQUEST_FORWARD_URL=http://mock-request-upstream:18081\\n- RESPONSE_FORWARD_URL=http://mock-response-upstream:18082\\n\\nRun folders based on active MODE:\\n- MODE=proxy: folders 00, 10, 20, 30\\n- MODE=idp: folder 40\\n\\nAfter requests, inspect generated files in logs/ for per-request formatting, body previews, attachment previews, and section boundaries.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const now = Date.now();",
+          "pm.collectionVariables.set('run_id', String(now));",
+          "pm.collectionVariables.set('relay_state_dynamic', `relay-${now}`);"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "run_id",
+      "value": "0"
+    },
+    {
+      "key": "relay_state_dynamic",
+      "value": "relay-0"
+    }
+  ],
+  "item": [
+    {
+      "name": "00 - Health",
+      "description": "Verifies server liveness and reported mode.",
+      "item": [
+        {
+          "name": "GET /healthz",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/healthz",
+            "description": "Expected: 200 with JSON {status: ok, mode: proxy|idp}."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "const data = pm.response.json();",
+                  "pm.test('status field is ok', function () {",
+                  "  pm.expect(data.status).to.eql('ok');",
+                  "});",
+                  "pm.test('mode is proxy or idp', function () {",
+                  "  pm.expect(['proxy', 'idp']).to.include(data.mode);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10 - Proxy Mode - Request Forwarding",
+      "description": "Run these only when MODE=proxy. These exercise REQUEST_ENTRY_PATH forwarding and logging behavior.",
+      "item": [
+        {
+          "name": "GET Request Branch (query + headers)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Debug-Run",
+                "value": "{{run_id}}"
+              },
+              {
+                "key": "X-Custom-Trace",
+                "value": "request-branch"
+              }
+            ],
+            "url": "{{base_url}}{{request_entry_path}}/get?ping=1&run={{run_id}}",
+            "description": "Verifies request forwarding branch and custom header capture."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mode = pm.environment.get('mode') || 'proxy';",
+                  "if (mode !== 'proxy') {",
+                  "  pm.test('Skipped (MODE=proxy required)', function () { pm.expect(true).to.eql(true); });",
+                  "} else {",
+                  "  pm.test('Status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST JSON Request Branch",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Debug-Run",
+                "value": "{{run_id}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"flow\": \"saml-request-branch\",\n  \"runId\": \"{{run_id}}\",\n  \"nested\": {\n    \"enabled\": true,\n    \"count\": 2\n  },\n  \"samlRequest\": \"PHNhbWxwOkF1dGhuUmVxdWVzdD5FeGFtcGxlPC9zYW1scDpBdXRoblJlcXVlc3Q+\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}{{request_entry_path}}/post?run={{run_id}}",
+            "description": "Verifies JSON body forwarding and logging."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mode = pm.environment.get('mode') || 'proxy';",
+                  "if (mode !== 'proxy') {",
+                  "  pm.test('Skipped (MODE=proxy required)', function () { pm.expect(true).to.eql(true); });",
+                  "} else {",
+                  "  pm.test('Status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST Form Urlencoded (SAMLRequest + RelayState)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "SAMLRequest",
+                  "value": "<samlp:AuthnRequest xmlns:samlp=\"urn:oasis:names:tc:SAML:2.0:protocol\">Example</samlp:AuthnRequest>",
+                  "type": "text"
+                },
+                {
+                  "key": "RelayState",
+                  "value": "relay-{{run_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "client",
+                  "value": "postman-suite",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": "{{base_url}}{{request_entry_path}}/post?run={{run_id}}",
+            "description": "Verifies form-encoded request capture and forwarding."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mode = pm.environment.get('mode') || 'proxy';",
+                  "if (mode !== 'proxy') {",
+                  "  pm.test('Skipped (MODE=proxy required)', function () { pm.expect(true).to.eql(true); });",
+                  "} else {",
+                  "  pm.test('Status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST Multipart Attachment",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "metadata",
+                  "value": "{\"flow\":\"multipart\",\"runId\":\"{{run_id}}\"}",
+                  "type": "text"
+                },
+                {
+                  "key": "document",
+                  "type": "file",
+                  "src": "{{upload_file_path}}"
+                }
+              ]
+            },
+            "url": "{{base_url}}{{request_entry_path}}/post?run={{run_id}}",
+            "description": "Verifies multipart capture and attachment preview logging."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mode = pm.environment.get('mode') || 'proxy';",
+                  "if (mode !== 'proxy') {",
+                  "  pm.test('Skipped (MODE=proxy required)', function () { pm.expect(true).to.eql(true); });",
+                  "} else {",
+                  "  pm.test('Status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST Binary Body",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/octet-stream"
+              }
+            ],
+            "body": {
+              "mode": "file",
+              "file": {
+                "src": "{{binary_file_path}}"
+              }
+            },
+            "url": "{{base_url}}{{request_entry_path}}/post?binary=true&run={{run_id}}",
+            "description": "Verifies binary body forwarding and base64 body logging."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mode = pm.environment.get('mode') || 'proxy';",
+                  "if (mode !== 'proxy') {",
+                  "  pm.test('Skipped (MODE=proxy required)', function () { pm.expect(true).to.eql(true); });",
+                  "} else {",
+                  "  pm.test('Status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET Prefix Boundary Check (request_entry_path + 'evil')",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}{{request_entry_path}}evil/get?boundaryCheck={{run_id}}",
+            "description": "Verifies strict boundary matching for entry paths. Inspect log FORWARDED REQUEST URL to confirm fallback path forwarding."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mode = pm.environment.get('mode') || 'proxy';",
+                  "if (mode !== 'proxy') {",
+                  "  pm.test('Skipped (MODE=proxy required)', function () { pm.expect(true).to.eql(true); });",
+                  "} else {",
+                  "  pm.test('Status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "20 - Proxy Mode - Response Forwarding",
+      "description": "Run these only when MODE=proxy. These exercise RESPONSE_ENTRY_PATH forwarding behavior.",
+      "item": [
+        {
+          "name": "GET Response Branch",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Custom-Trace",
+                "value": "response-branch"
+              }
+            ],
+            "url": "{{base_url}}{{response_entry_path}}/get?branch=response&run={{run_id}}",
+            "description": "Verifies response-branch forwarding."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mode = pm.environment.get('mode') || 'proxy';",
+                  "if (mode !== 'proxy') {",
+                  "  pm.test('Skipped (MODE=proxy required)', function () { pm.expect(true).to.eql(true); });",
+                  "} else {",
+                  "  pm.test('Status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST JSON Response Branch",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"flow\": \"response-branch\",\n  \"runId\": \"{{run_id}}\",\n  \"note\": \"should be forwarded to RESPONSE_FORWARD_URL\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "{{base_url}}{{response_entry_path}}/post?run={{run_id}}",
+            "description": "Verifies POST forwarding through RESPONSE_ENTRY_PATH."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mode = pm.environment.get('mode') || 'proxy';",
+                  "if (mode !== 'proxy') {",
+                  "  pm.test('Skipped (MODE=proxy required)', function () { pm.expect(true).to.eql(true); });",
+                  "} else {",
+                  "  pm.test('Status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET Binary Response Passthrough",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}{{response_entry_path}}/image/png",
+            "description": "Verifies binary response forwarding and binary log preview."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mode = pm.environment.get('mode') || 'proxy';",
+                  "if (mode !== 'proxy') {",
+                  "  pm.test('Skipped (MODE=proxy required)', function () { pm.expect(true).to.eql(true); });",
+                  "} else {",
+                  "  pm.test('Status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET Duplicate Set-Cookie Probe",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}{{response_entry_path}}/response-headers?Set-Cookie=a%3D1&Set-Cookie=b%3D2",
+            "description": "Probes duplicate Set-Cookie forwarding using the local mock response upstream."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mode = pm.environment.get('mode') || 'proxy';",
+                  "if (mode !== 'proxy') {",
+                  "  pm.test('Skipped (MODE=proxy required)', function () { pm.expect(true).to.eql(true); });",
+                  "} else {",
+                  "  pm.test('Status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "30 - Proxy Mode - Log Formatting and Truncation",
+      "description": "Generates large request body to verify MAX_BODY_LOG_BYTES truncation marker.",
+      "item": [
+        {
+          "name": "POST Large Body (truncation test)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('large_body') || pm.collectionVariables.get('large_body').length < 200000) {",
+                  "  pm.collectionVariables.set('large_body', 'L'.repeat(220000));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mode = pm.environment.get('mode') || 'proxy';",
+                  "if (mode !== 'proxy') {",
+                  "  pm.test('Skipped (MODE=proxy required)', function () { pm.expect(true).to.eql(true); });",
+                  "} else {",
+                  "  pm.test('Status is not 5xx', function () { pm.expect(pm.response.code).to.be.below(500); });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{{large_body}}"
+            },
+            "url": "{{base_url}}{{request_entry_path}}/post?large=true&run={{run_id}}",
+            "description": "Inspect generated log file for the truncation marker line."
+          }
+        }
+      ]
+    },
+    {
+      "name": "40 - IdP Mode",
+      "description": "Run these only when MODE=idp and IDP settings are configured.",
+      "item": [
+        {
+          "name": "GET Static SAML Auto-POST Response",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/saml/login?RelayState={{relay_state_dynamic}}",
+            "description": "Verifies static IdP response with auto-submitting form."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mode = pm.environment.get('mode') || 'proxy';",
+                  "if (mode !== 'idp') {",
+                  "  pm.test('Skipped (MODE=idp required)', function () { pm.expect(true).to.eql(true); });",
+                  "} else {",
+                  "  const expectedStatus = Number(pm.environment.get('idp_expected_status') || '200');",
+                  "  const fieldName = pm.environment.get('idp_form_field_name') || 'SAMLResponse';",
+                  "  pm.test('Status matches expected', function () { pm.expect(pm.response.code).to.eql(expectedStatus); });",
+                  "  const body = pm.response.text();",
+                  "  pm.test('Response includes HTML form', function () { pm.expect(body).to.include('<form'); });",
+                  "  pm.test('Response includes configured form field', function () { pm.expect(body).to.include(`name=\"${fieldName}\"`); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST RelayState Passthrough Check",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "RelayState",
+                  "value": "relay-post-{{run_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "foo",
+                  "value": "bar",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": "{{base_url}}/saml/acs/init",
+            "description": "Verifies RelayState passthrough in IdP mode when enabled."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mode = pm.environment.get('mode') || 'proxy';",
+                  "if (mode !== 'idp') {",
+                  "  pm.test('Skipped (MODE=idp required)', function () { pm.expect(true).to.eql(true); });",
+                  "} else {",
+                  "  const body = pm.response.text();",
+                  "  pm.test('Response contains relay state from request', function () {",
+                  "    pm.expect(body).to.include(`value=\"relay-post-${pm.collectionVariables.get('run_id')}\"`);",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET Cookie/Header Injection Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/idp/header-cookie-check",
+            "description": "Verifies optional IDP_SET_COOKIE_NAME and IDP_SET_HEADER_NAME behavior when configured."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mode = pm.environment.get('mode') || 'proxy';",
+                  "if (mode !== 'idp') {",
+                  "  pm.test('Skipped (MODE=idp required)', function () { pm.expect(true).to.eql(true); });",
+                  "} else {",
+                  "  const cookieName = pm.environment.get('idp_cookie_name') || '';",
+                  "  const headerName = pm.environment.get('idp_header_name') || '';",
+                  "  if (cookieName) {",
+                  "    pm.test('Configured cookie is present', function () {",
+                  "      const setCookie = pm.response.headers.get('Set-Cookie') || '';",
+                  "      pm.expect(setCookie).to.include(`${cookieName}=`);",
+                  "    });",
+                  "  }",
+                  "  if (headerName) {",
+                  "    pm.test('Configured header is present', function () {",
+                  "      pm.expect(pm.response.headers.has(headerName)).to.eql(true);",
+                  "    });",
+                  "  }",
+                  "  if (!cookieName && !headerName) {",
+                  "    pm.test('No cookie/header assertion configured', function () { pm.expect(true).to.eql(true); });",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET Custom Template Placeholder Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/idp/template-check?RelayState={{relay_state_dynamic}}",
+            "description": "If IDP_BODY_TEMPLATE is configured, this verifies optional expected substring in response body."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const mode = pm.environment.get('mode') || 'proxy';",
+                  "if (mode !== 'idp') {",
+                  "  pm.test('Skipped (MODE=idp required)', function () { pm.expect(true).to.eql(true); });",
+                  "} else {",
+                  "  const expected = pm.environment.get('idp_template_expected_text') || '';",
+                  "  if (expected) {",
+                  "    pm.test('Custom template expected text is present', function () {",
+                  "      pm.expect(pm.response.text()).to.include(expected);",
+                  "    });",
+                  "  } else {",
+                  "    pm.test('No template assertion configured', function () { pm.expect(true).to.eql(true); });",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

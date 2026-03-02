@@ -1,0 +1,2 @@
+This is a sample attachment file used by the Postman multipart test.
+It should appear in the per-request log as an attachment entry with a content preview.

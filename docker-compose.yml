@@ -1,0 +1,78 @@
+services:
+  mock-request-upstream:
+    build:
+      context: .
+      dockerfile: mocks/Dockerfile
+    container_name: mock-request-upstream
+    environment:
+      SERVICE_NAME: mock-request-upstream
+      MOCK_LISTEN_PORT: 18081
+    ports:
+      - "${MOCK_REQUEST_PORT:-18081}:18081"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18081/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  mock-response-upstream:
+    build:
+      context: .
+      dockerfile: mocks/Dockerfile
+    container_name: mock-response-upstream
+    environment:
+      SERVICE_NAME: mock-response-upstream
+      MOCK_LISTEN_PORT: 18082
+    ports:
+      - "${MOCK_RESPONSE_PORT:-18082}:18082"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18082/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  request-capture-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: request-capture-proxy
+    depends_on:
+      mock-request-upstream:
+        condition: service_healthy
+      mock-response-upstream:
+        condition: service_healthy
+    environment:
+      MODE: ${MODE:-proxy}
+      LISTEN_HOST: ${LISTEN_HOST:-0.0.0.0}
+      LISTEN_PORT: ${LISTEN_PORT:-8080}
+      LOG_DIR: ${LOG_DIR:-/app/logs}
+      MAX_BODY_LOG_BYTES: ${MAX_BODY_LOG_BYTES:-131072}
+      REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-30}
+      PRESERVE_HOST_HEADER: ${PRESERVE_HOST_HEADER:-false}
+      REQUEST_ENTRY_PATH: ${REQUEST_ENTRY_PATH:-/forward/request}
+      RESPONSE_ENTRY_PATH: ${RESPONSE_ENTRY_PATH:-/forward/response}
+      REQUEST_FORWARD_URL: ${REQUEST_FORWARD_URL:-http://mock-request-upstream:18081}
+      RESPONSE_FORWARD_URL: ${RESPONSE_FORWARD_URL:-http://mock-response-upstream:18082}
+      IDP_POST_URL: ${IDP_POST_URL:-}
+      IDP_SAML_RESPONSE: ${IDP_SAML_RESPONSE:-}
+      IDP_FORM_FIELD_NAME: ${IDP_FORM_FIELD_NAME:-SAMLResponse}
+      IDP_RELAY_STATE: ${IDP_RELAY_STATE:-}
+      IDP_PASSTHROUGH_RELAY_STATE: ${IDP_PASSTHROUGH_RELAY_STATE:-true}
+      IDP_EXTRA_FORM_FIELDS: ${IDP_EXTRA_FORM_FIELDS:-{}}
+      IDP_SET_COOKIE_NAME: ${IDP_SET_COOKIE_NAME:-}
+      IDP_SET_HEADER_NAME: ${IDP_SET_HEADER_NAME:-}
+      IDP_BODY_TEMPLATE: ${IDP_BODY_TEMPLATE:-}
+      IDP_HTTP_STATUS: ${IDP_HTTP_STATUS:-200}
+      IDP_CONTENT_TYPE: ${IDP_CONTENT_TYPE:-text/html; charset=utf-8}
+    ports:
+      - "${LISTEN_PORT:-8080}:${LISTEN_PORT:-8080}"
+    volumes:
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
