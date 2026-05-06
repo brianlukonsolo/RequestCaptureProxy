@@ -1,0 +1,28 @@
+services:
+  demo-request-logger:
+    build:
+      context: .
+      dockerfile: demo/Dockerfile
+    container_name: demo-request-logger
+    environment:
+      SERVICE_NAME: demo-request-logger
+      DEMO_LISTEN_HOST: 0.0.0.0
+      DEMO_LISTEN_PORT: 18080
+      DEMO_MAX_BODY_LOG_BYTES: ${DEMO_MAX_BODY_LOG_BYTES:-8192}
+    ports:
+      - "${DEMO_REQUEST_LOGGER_PORT:-18080}:18080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18080/healthz', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  request-capture-proxy:
+    depends_on:
+      demo-request-logger:
+        condition: service_healthy
+    environment:
+      REQUEST_FORWARD_URL: http://demo-request-logger:18080
+      RESPONSE_FORWARD_URL: http://demo-request-logger:18080
+      SAML_REQUEST_TARGETS: "Local Demo Logger=http://localhost:18080/saml-demo;Container Demo Logger=http://demo-request-logger:18080/saml-demo"

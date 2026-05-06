@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a0a16598-fd8d-4db5-a3eb-8a8e1f3e6d6b",
     "name": "RequestCaptureProxy - Comprehensive Feature Suite",
-    "description": "Comprehensive Postman suite for RequestCaptureProxy.\\n\\nRecommended proxy-mode upstreams for repeatable behavior:\\n- REQUEST_FORWARD_URL=http://mock-request-upstream:18081\\n- RESPONSE_FORWARD_URL=http://mock-response-upstream:18082\\n\\nRun folders based on active MODE:\\n- MODE=proxy: folders 00, 10, 20, 30\\n- MODE=idp: folder 40\\n\\nAfter requests, inspect generated files in logs/ for per-request formatting, body previews, attachment previews, and section boundaries.",
+    "description": "Comprehensive Postman suite for RequestCaptureProxy.\\n\\nFor repeatable proxy-mode behavior, start demo mode first:\\n- docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build -d\\n\\nDemo mode forwards both branches to:\\n- REQUEST_FORWARD_URL=http://demo-request-logger:18080\\n- RESPONSE_FORWARD_URL=http://demo-request-logger:18080\\n\\nRun folders based on active MODE:\\n- MODE=proxy: folders 00, 10, 20, 30\\n- MODE=idp: folder 40\\n\\nAfter requests, inspect generated files in logs/ for per-request formatting, body previews, attachment previews, and section boundaries. Also inspect demo-request-logger stdout for proof that forwarded traffic arrived.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "event": [

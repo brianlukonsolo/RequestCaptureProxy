@@ -1,249 +1,353 @@
 # 🧭 Request Capture Proxy
 
-Debug and replay utility for SAML/API-gateway traffic with two modes:
+Debug SAML/API-gateway flows by logging the real HTTP traffic end to end.
 
-- 🔁 `proxy` mode: forward traffic and log full request/response details.
-- 🪪 `idp` mode: return a static SAML response immediately (no validation), including auto-POST behavior.
+The main thing to remember:
 
----
+```text
+http://localhost:8080/ui
+```
 
-## ✨ Highlights
+That single UI has tabs for:
 
-- 📁 One log file per request in `LOG_DIR`
-- 🧾 Captures:
-  - all headers
-  - full body (with truncation guard via `MAX_BODY_LOG_BYTES`)
-  - multipart attachment metadata plus content preview
-- 🧱 Clear log boundaries:
-  - `REQUEST START`
-  - `FORWARDED REQUEST`
-  - `RESPONSE END`
-- 🧭 Two forwarding branches:
-  - `REQUEST_FORWARD_URL`
-  - `RESPONSE_FORWARD_URL`
-- 🪄 IdP emulation that can place SAML response in:
-  - HTML form field
-  - cookie
-  - response header
-  - custom body template
-- ❤️ Health endpoint: `GET /healthz`
+- 🧩 `Instance Setup` - copy the SSO/ACS URLs into your SAML product UI.
+- 🪄 `Send / Generate` - generate or paste SAMLRequest/SAMLResponse payloads and send them.
+- ✅ `Status` - health checks and proof commands.
 
----
+> ⚠️ This tool intentionally logs sensitive SAML and HTTP data. Use it for debugging, not as an internet-facing service.
 
-## 🏗️ Architecture
+## 🚦 Pick Your Run Mode
 
-Default `docker-compose` stack starts three services:
+| Mode | Use It When | Command |
+| --- | --- | --- |
+| 🧍 Standalone | You want only the proxy and will configure real upstreams yourself. | `docker compose up --build -d` |
+| 🎬 Demo | You want a visible proof server that logs every forwarded request. | `docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build -d` |
+| 🐍 Local Python | You are developing or debugging without Docker. | `python main.py` |
 
-- 🚪 `request-capture-proxy` on `http://localhost:8080`
-- 🧪 `mock-request-upstream` on `http://localhost:18081`
-- 🧪 `mock-response-upstream` on `http://localhost:18082`
+## ⚡ Quick Start
 
-Default forwarding:
-
-- `REQUEST_FORWARD_URL=http://mock-request-upstream:18081`
-- `RESPONSE_FORWARD_URL=http://mock-response-upstream:18082`
-
----
-
-## 📦 Prerequisites
-
-- 🐳 Docker Desktop (for compose workflow)
-- 🐍 Python 3.11+ (for local non-docker runs)
-
----
-
-## 🚀 Quick Start (Docker Compose)
-
-1. Create runtime config file:
+1. Create your local config:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-2. Start everything:
+2. Start demo mode:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build -d
+```
+
+3. Open the UI:
+
+```text
+http://localhost:8080/ui
+```
+
+4. Open the demo logger stream:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.demo.yml logs -f demo-request-logger
+```
+
+5. In the UI, use `Instance Setup` → `Send To SSO URL` or `Send To ACS URL`.
+
+You should see:
+
+- 📁 a new capture file in `logs/`
+- 🖥️ a matching request printed by `demo-request-logger`
+
+## 🎬 Demo Mode For Showcases
+
+Demo mode starts two services:
+
+- 🚪 `request-capture-proxy` at `http://localhost:8080`
+- 📣 `demo-request-logger` at `http://localhost:18080`
+
+The proxy forwards both branches to the demo logger:
+
+```env
+REQUEST_FORWARD_URL=http://demo-request-logger:18080
+RESPONSE_FORWARD_URL=http://demo-request-logger:18080
+```
+
+Start:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build -d
+```
+
+Watch requests arrive:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.demo.yml logs -f demo-request-logger
+```
+
+Send a proof request:
+
+```bash
+curl -X POST "http://localhost:8080/forward/request/saml/login?demo=1" -H "Content-Type: application/x-www-form-urlencoded" -d "SAMLRequest=demo-request&RelayState=relay-123"
+```
+
+Send a proof response:
+
+```bash
+curl -X POST "http://localhost:8080/forward/response/saml/acs" -H "Content-Type: application/x-www-form-urlencoded" -d "SAMLResponse=demo-response&RelayState=relay-123"
+```
+
+PowerShell note:
+
+```powershell
+curl.exe -X POST "http://localhost:8080/forward/request/saml/login?demo=1" -H "Content-Type: application/x-www-form-urlencoded" -d "SAMLRequest=demo-request&RelayState=relay-123"
+```
+
+Stop:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.demo.yml down
+```
+
+## 🧍 Standalone Proxy
+
+Use this when you want the proxy only.
+
+Start:
 
 ```bash
 docker compose up --build -d
 ```
 
-3. Follow logs:
+Open:
 
-```bash
-docker compose logs -f
+```text
+http://localhost:8080/ui
 ```
 
-4. Stop stack:
+Set real forwarding targets in `.env`:
+
+```env
+REQUEST_FORWARD_URL=https://real-idp.example.com/sso
+RESPONSE_FORWARD_URL=https://real-sp.example.com/saml/acs
+```
+
+Follow proxy logs:
+
+```bash
+docker compose logs -f request-capture-proxy
+```
+
+Stop:
 
 ```bash
 docker compose down
 ```
 
----
+## 🧩 Sending From A SAML Product UI
 
-## 🔊 Startup Logs (Clear Service Identity)
+Open:
 
-Each container prints explicit startup banners, for example:
+```text
+http://localhost:8080/ui
+```
 
-- `[startup] service=request-capture-proxy`
-- `[startup] service=mock-request-upstream`
-- `[startup] service=mock-response-upstream`
-- plus bind address, local URL, health URL, and key endpoint examples
+Go to the `Instance Setup` tab.
 
-This is designed so `docker compose logs -f` is instantly readable.
+Copy these into your SAML product:
 
----
+- 🔐 IdP SSO / Login URL:
+  `http://localhost:8080/saml/instance/sso`
+- 📬 SP ACS / Callback URL:
+  `http://localhost:8080/saml/instance/acs`
 
-## 🧰 Modes
+How it works:
 
-### 🔁 Proxy Mode
+- Requests sent to `/saml/instance/sso` are logged, then forwarded to `REQUEST_FORWARD_URL`.
+- Responses sent to `/saml/instance/acs` are logged, then forwarded to `RESPONSE_FORWARD_URL`.
 
-Set:
+Optional custom paths:
 
-- `MODE=proxy`
-- `REQUEST_FORWARD_URL=<request upstream>`
-- `RESPONSE_FORWARD_URL=<response upstream>`
+```env
+SAML_INSTANCE_SSO_PATH=/saml/instance/sso
+SAML_INSTANCE_ACS_PATH=/saml/instance/acs
+```
 
-Call paths:
+## 🪄 Generate And Send SAML
 
-- `http://localhost:8080/forward/request/...` → `REQUEST_FORWARD_URL/...`
-- `http://localhost:8080/forward/response/...` → `RESPONSE_FORWARD_URL/...`
+Open:
 
-Fallback:
+```text
+http://localhost:8080/ui
+```
 
-- Any non-matching path falls back to request branch (`REQUEST_FORWARD_URL`)
+Go to the `Send / Generate` tab.
 
-### 🪪 IdP Mode
+You can:
 
-Set:
+- 🧾 generate a sample `AuthnRequest`
+- 🎟️ generate a sample `SAMLResponse`
+- ✍️ paste your own SAML payload
+- 🚀 send using Browser POST, Browser Redirect, or Server POST
 
-- `MODE=idp`
-- `IDP_POST_URL=https://sp.example.com/saml/acs`
-- `IDP_SAML_RESPONSE=<your static SAMLResponse>`
+Default destinations are proxy URLs:
 
-Behavior:
+- `Proxy SSO URL` → logs through the proxy and forwards to `REQUEST_FORWARD_URL`
+- `Proxy ACS URL` → logs through the proxy and forwards to `RESPONSE_FORWARD_URL`
 
-- Accepts inbound request as-is
-- Performs no validation
-- Returns configured static response immediately
-- Default output is an auto-submit HTML form POST to `IDP_POST_URL`
+`idp.example.com` only appears inside sample XML. It is not the default send target.
 
-Optional output placement:
+Optional sender presets:
 
-- `IDP_FORM_FIELD_NAME` (default `SAMLResponse`)
-- `IDP_SET_COOKIE_NAME`
-- `IDP_SET_HEADER_NAME`
-- `IDP_BODY_TEMPLATE`
+```env
+SAML_REQUEST_TARGETS={"Dev IdP":"https://idp.dev.example.com/sso","QA IdP":"https://idp.qa.example.com/sso"}
+```
 
-Template placeholders:
+Delimited format also works:
 
-- `{{SAML_RESPONSE}}`
-- `{{POST_URL}}`
-- `{{FORM_FIELD_NAME}}`
-- `{{RELAY_STATE}}`
-- `{{FORM_FIELDS_JSON}}`
+```env
+SAML_REQUEST_TARGETS=Dev=https://idp.dev.example.com/sso;QA=https://idp.qa.example.com/sso
+```
 
-RelayState behavior:
+## ✅ How To Know It Works
 
-- `IDP_PASSTHROUGH_RELAY_STATE=true` uses inbound `RelayState` if present
-- `IDP_RELAY_STATE` acts as fallback/static value
+1. Health returns JSON:
 
----
+```bash
+curl http://localhost:8080/healthz
+```
 
-## 🧪 Built-in Mock Upstream Endpoints
+Expected fields:
 
-Available on both mock services (`:18081` and `:18082`):
+```json
+{"status":"ok","mode":"proxy"}
+```
 
-- `GET /healthz`
-- `GET|POST|PUT|PATCH|DELETE /...` (echo request details as JSON)
-- `GET /image/png` (binary response)
-- `GET /response-headers?Set-Cookie=a%3D1&Set-Cookie=b%3D2` (duplicate-header test)
-- `GET /status/<code>` (custom status response)
-- `GET /set-cookies` (multiple cookies)
+2. Demo logger receives forwarded traffic:
 
----
+```bash
+docker compose -f docker-compose.yml -f docker-compose.demo.yml logs demo-request-logger
+```
 
-## 📜 Logging Behavior
+Look for:
 
-Per-request log files are written to `LOG_DIR` (default `logs/`).
+```text
+[demo-request] method=POST
+[demo-request] body_preview:
+  SAMLRequest=demo-request&RelayState=relay-123
+```
 
-Each log includes:
+3. Proxy writes capture files:
 
-- request ID + timestamps
-- mode
-- request and forwarded request sections
-- upstream response section
-- headers and body previews
-- multipart attachment previews
+```powershell
+Get-ChildItem .\logs | Sort-Object LastWriteTime -Descending | Select-Object -First 5
+```
 
-Body preview rules:
+Open the newest `.log` and look for:
 
-- Text-like content: UTF-8 preview
-- Binary content: Base64 preview
-- Oversized content: truncated with explicit marker
+- `REQUEST START`
+- `FORWARDED REQUEST`
+- `RESPONSE END`
 
----
+## 🐍 Local Python Run
 
-## ⚙️ Configuration Reference
-
-### Core
-
-- `MODE` (default `proxy`) values: `proxy`, `idp`
-- `LISTEN_HOST` (default `0.0.0.0`)
-- `LISTEN_PORT` (default `8080`)
-- `LOG_DIR` (default `logs`)
-- `MAX_BODY_LOG_BYTES` (default `131072`)
-- `REQUEST_TIMEOUT_SECONDS` (default `30`)
-- `PRESERVE_HOST_HEADER` (default `false`)
-
-### Routing/Forwarding
-
-- `REQUEST_ENTRY_PATH` (default `/forward/request`)
-- `RESPONSE_ENTRY_PATH` (default `/forward/response`)
-- `REQUEST_FORWARD_URL` (default `http://mock-request-upstream:18081` in compose)
-- `RESPONSE_FORWARD_URL` (default `http://mock-response-upstream:18082` in compose)
-
-### IdP
-
-- `IDP_POST_URL`
-- `IDP_SAML_RESPONSE`
-- `IDP_FORM_FIELD_NAME` (default `SAMLResponse`)
-- `IDP_RELAY_STATE`
-- `IDP_PASSTHROUGH_RELAY_STATE` (default `true`)
-- `IDP_EXTRA_FORM_FIELDS` (JSON object string)
-- `IDP_SET_COOKIE_NAME`
-- `IDP_SET_HEADER_NAME`
-- `IDP_BODY_TEMPLATE`
-- `IDP_HTTP_STATUS` (default `200`)
-- `IDP_CONTENT_TYPE` (default `text/html; charset=utf-8`)
-
-### Mock Service Ports (compose)
-
-- `MOCK_REQUEST_PORT` (default `18081`)
-- `MOCK_RESPONSE_PORT` (default `18082`)
-
----
-
-## 🖥️ Local Python Run (Without Docker)
-
-Install:
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Run:
+Start the local demo logger:
+
+```bash
+python demo/request_logger.py
+```
+
+In another terminal, make sure `.env` points to the local logger:
+
+```env
+REQUEST_FORWARD_URL=http://127.0.0.1:18080
+RESPONSE_FORWARD_URL=http://127.0.0.1:18080
+```
+
+Start the proxy:
 
 ```bash
 python main.py
 ```
 
-Note:
+Open:
 
-- `main.py` loads `.env` automatically if present
+```text
+http://localhost:8080/ui
+```
 
----
+The `Instance Setup` proof buttons should return JSON from the local demo logger and create capture files in `logs/`.
 
-## 🧪 Automated Tests
+## ⚙️ Configuration Cheat Sheet
+
+Core:
+
+```env
+MODE=proxy
+LISTEN_HOST=0.0.0.0
+LISTEN_PORT=8080
+LOG_DIR=logs
+MAX_BODY_LOG_BYTES=131072
+REQUEST_TIMEOUT_SECONDS=30
+PRESERVE_HOST_HEADER=false
+```
+
+Forwarding:
+
+```env
+REQUEST_ENTRY_PATH=/forward/request
+RESPONSE_ENTRY_PATH=/forward/response
+SAML_INSTANCE_SSO_PATH=/saml/instance/sso
+SAML_INSTANCE_ACS_PATH=/saml/instance/acs
+REQUEST_FORWARD_URL=
+RESPONSE_FORWARD_URL=
+```
+
+Fake IdP mode:
+
+```env
+MODE=idp
+IDP_POST_URL=https://sp.example.com/saml/acs
+IDP_SAML_RESPONSE=<Base64OrRawSamlResponseHere>
+IDP_FORM_FIELD_NAME=SAMLResponse
+IDP_PASSTHROUGH_RELAY_STATE=true
+```
+
+Demo:
+
+```env
+DEMO_REQUEST_LOGGER_PORT=18080
+DEMO_MAX_BODY_LOG_BYTES=8192
+```
+
+## 📣 Demo Request Logger
+
+The demo request logger lives in:
+
+- `demo/request_logger.py`
+- `demo/Dockerfile`
+
+It exposes:
+
+- `GET /healthz`
+- `GET|POST|PUT|PATCH|DELETE /...`
+
+It prints:
+
+- request ID and timestamp
+- method and full URL
+- headers
+- parsed form fields
+- body size
+- text/base64 body preview
+
+It also returns the captured request snapshot as JSON.
+
+## 🧪 Tests
 
 ```bash
 python -m unittest discover -s tests -v
@@ -253,57 +357,61 @@ Covers:
 
 - health endpoint
 - route boundary matching
-- proxy forwarding behavior
+- proxy forwarding
 - duplicate `Set-Cookie` preservation
-- idp-mode static response behavior
+- IdP static response behavior
 - attachment preview logging
+- tabbed UI behavior
+- SAML generator/sender behavior
+- SAML instance endpoint forwarding
+- demo request logger behavior
 
----
+## 📬 Postman
 
-## 📬 Postman Suite
+Use:
 
-Use files in [`postman/`](postman):
+- `postman/RequestCaptureProxy.postman_collection.json`
+- `postman/RequestCaptureProxy.local.postman_environment.json`
 
-- `RequestCaptureProxy.postman_collection.json`
-- `RequestCaptureProxy.local.postman_environment.json`
+For proxy-mode Postman runs, start demo mode first:
 
-Guide:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build -d
+```
 
-- see [`postman/README.md`](postman/README.md)
+## 🧯 Troubleshooting
 
-Collection covers:
+### ❌ It tries to call `idp.example.com`
 
-- health checks
-- request and response branch forwarding
-- multipart and binary requests
-- large payload truncation behavior
-- idp-mode validation flow
+That should only happen if you selected a custom/preset target that points there. The default destination should be `Proxy SSO URL` or `Proxy ACS URL`.
 
----
+Check `.env`:
 
-## 🩺 Troubleshooting
+```env
+SAML_REQUEST_TARGETS=
+```
 
-- ❗ Seeing unexpected upstream target?
-  - Check `.env` values for `REQUEST_FORWARD_URL` / `RESPONSE_FORWARD_URL`
-  - Run `docker compose config` to inspect resolved values
+Restart the app after editing `.env`.
 
-- ❗ Service starts but forwarding fails?
-  - Confirm `MODE=proxy`
-  - Confirm upstream URL is reachable from container network
-  - Check `docker compose logs request-capture-proxy -f`
+### ❌ It tries to call `mock-request-upstream`
 
-- ❗ Not sure which service is which?
-  - Read startup banners in `docker compose logs -f`
-  - Each container prints `[startup] service=...` with local URLs
+That is an old Docker-only hostname. Remove stale shell variables or use `.env` targets:
 
-- ❗ No logs created?
-  - Verify `./logs` bind mount exists and is writable
-  - Check `LOG_DIR` value in runtime environment
+```env
+REQUEST_FORWARD_URL=http://127.0.0.1:18080
+RESPONSE_FORWARD_URL=http://127.0.0.1:18080
+```
 
----
+### ❌ No capture files appear
 
-## 🔐 Notes
+Check:
+
+- `LOG_DIR=logs`
+- the `logs/` folder is writable
+- the request is going through the proxy URL, not directly to the target
+
+## 🔐 Safety Notes
 
 - This tool is intentionally permissive for debugging.
-- IdP mode intentionally performs no SAML validation.
-- Do not expose this service to untrusted networks without additional controls.
+- It logs SAML payloads, cookies, headers, and bodies by design.
+- Do not expose it to untrusted networks without additional controls.

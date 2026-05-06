@@ -15,11 +15,23 @@
 
 ## Recommended runtime config for proxy-mode tests
 
-Set these in `.env` (or `docker-compose.yml`) before starting service:
+Start demo mode before running proxy-mode tests:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.demo.yml up --build -d
+```
+
+Demo mode sets:
 
 - `MODE=proxy`
-- `REQUEST_FORWARD_URL=http://mock-request-upstream:18081`
-- `RESPONSE_FORWARD_URL=http://mock-response-upstream:18082`
+- `REQUEST_FORWARD_URL=http://demo-request-logger:18080`
+- `RESPONSE_FORWARD_URL=http://demo-request-logger:18080`
+
+Follow the upstream proof logs with:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.demo.yml logs -f demo-request-logger
+```
 
 Then run folders in this order:
 
